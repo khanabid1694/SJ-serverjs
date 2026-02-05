@@ -5,21 +5,31 @@
   "license": "ISC",
   "author": "",
   "type": "commonjs",
-  "main": "db.js",
+  "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.0.2",
+    "axios": "^1.13.4",
     "cloudinary": "^2.9.0",
-    "axios": "^1.6.0",
-    "cors": "^2.8.5",
+    "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
-    "fs": "^0.0.1-security",
+    "form-data": "^4.0.5",
+    "itty-router": "^5.0.22",
     "multer": "^2.0.2",
-    "path": "^0.12.7",
-    "pg": "^8.16.3",
+    "pg": "^8.17.2",
     "streamifier": "^0.1.1"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TahaAliRana/Sohag_backendjs.git"
+  },
+  "keywords": [],
+  "bugs": {
+    "url": "https://github.com/TahaAliRana/Sohag_backendjs/issues"
+  },
+  "homepage": "https://github.com/TahaAliRana/Sohag_backendjs#readme"
 }
