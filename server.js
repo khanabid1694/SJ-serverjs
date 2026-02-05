@@ -60,6 +60,7 @@ function uploadToCloudinary(fileBuffer) {
         else resolve(result.secure_url);
       }
     );
+
     streamifier.createReadStream(fileBuffer).pipe(uploadStream);
   });
 }
@@ -68,18 +69,26 @@ function uploadToCloudinary(fileBuffer) {
    WHATSAPP HELPER
 ================================ */
 async function sendWhatsAppOrder(order) {
-  const message = `
-🛍 *NEW ORDER*
+  let itemsText = "";
+  order.items.forEach((item, i) => {
+    itemsText += `${i + 1}. ${item.title} (${item.weight}g)\n`;
+  });
 
-👤 Name: ${order.customerName}
-📞 Phone: ${order.phone}
-📍 Address: ${order.address}
+  const message = `🛍 *NEW ORDER RECEIVED*
 
-📦 Items: ${order.items.length}
-💰 Total: Rs ${order.total}
+👤 *Name:* ${order.customerName}
+📞 *Phone:* ${order.phone}
+📍 *Address:* ${order.address}
 
-SJ Jewellers
-`;
+💳 *Payment:* ${order.paymentMethod}
+💰 *Total:* Rs ${order.totalAmount}
+
+📦 *Items:*
+${itemsText}
+
+🆔 *Order ID:* ${order.orderId}
+
+SJ Jewellers`;
 
   await axios.post(
     `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
@@ -156,7 +165,7 @@ app.put("/api/products/:id", upload.single("image"), async (req, res) => {
 
     res.json(rows[0]);
   } catch (err) {
-    console.error("UPDATE ERROR:", err.message);
+    console.error("UPDATE PRODUCT ERROR:", err.message);
     res.status(500).json({ error: "Failed to update product" });
   }
 });
@@ -170,7 +179,7 @@ app.delete("/api/products/:id", async (req, res) => {
     await pool.query("DELETE FROM products WHERE id=$1", [id]);
     res.json({ message: "Product deleted" });
   } catch (err) {
-    console.error("DELETE ERROR:", err.message);
+    console.error("DELETE PRODUCT ERROR:", err.message);
     res.status(500).json({ error: "Failed to delete product" });
   }
 });
@@ -191,23 +200,32 @@ app.get("/api/products", async (req, res) => {
 });
 
 /* ===============================
-   PLACE ORDER + WHATSAPP
+   PLACE ORDER → WHATSAPP
 ================================ */
 app.post("/api/orders", async (req, res) => {
   try {
     const order = req.body;
 
+    if (
+      !order.customerName ||
+      !order.phone ||
+      !order.address ||
+      !order.items
+    ) {
+      return res.status(400).json({ error: "Missing order fields" });
+    }
+
     await sendWhatsAppOrder(order);
 
     res.json({
       success: true,
-      message: "Order placed & WhatsApp sent",
+      message: "Order received & WhatsApp sent",
     });
   } catch (err) {
-    console.error("ORDER ERROR:", err.message);
+    console.error("ORDER ERROR:", err.response?.data || err.message);
     res.status(500).json({
       success: false,
-      message: "Order failed",
+      message: "Failed to process order",
     });
   }
 });
