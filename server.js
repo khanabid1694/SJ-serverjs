@@ -6,8 +6,9 @@ const multer = require("multer");
 const { Pool } = require("pg");
 const cloudinary = require("cloudinary").v2;
 const streamifier = require("streamifier");
+const axios = require("axios");
 
-console.log("🔥 Server started");
+console.log("🔥 Server starting...");
 
 const app = express();
 app.use(cors());
@@ -48,7 +49,7 @@ app.get("/", (req, res) => {
 });
 
 /* ===============================
-   HELPER: Upload to Cloudinary
+   CLOUDINARY UPLOAD HELPER
 ================================ */
 function uploadToCloudinary(fileBuffer) {
   return new Promise((resolve, reject) => {
@@ -59,9 +60,42 @@ function uploadToCloudinary(fileBuffer) {
         else resolve(result.secure_url);
       }
     );
-
     streamifier.createReadStream(fileBuffer).pipe(uploadStream);
   });
+}
+
+/* ===============================
+   WHATSAPP HELPER
+================================ */
+async function sendWhatsAppOrder(order) {
+  const message = `
+🛍 *NEW ORDER*
+
+👤 Name: ${order.customerName}
+📞 Phone: ${order.phone}
+📍 Address: ${order.address}
+
+📦 Items: ${order.items.length}
+💰 Total: Rs ${order.total}
+
+SJ Jewellers
+`;
+
+  await axios.post(
+    `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+    {
+      messaging_product: "whatsapp",
+      to: process.env.ADMIN_WHATSAPP_NUMBER,
+      type: "text",
+      text: { body: message },
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+    }
+  );
 }
 
 /* ===============================
@@ -75,14 +109,11 @@ app.post("/api/products", upload.single("image"), async (req, res) => {
       return res.status(400).json({ error: "Title and category required" });
     }
 
-    let finalImageUrl = null;
+    let finalImageUrl;
 
-    // If file uploaded → send to Cloudinary
     if (req.file) {
       finalImageUrl = await uploadToCloudinary(req.file.buffer);
-    }
-    // If imageUrl provided directly
-    else if (imageUrl) {
+    } else if (imageUrl) {
       finalImageUrl = imageUrl;
     } else {
       return res.status(400).json({ error: "Image or Image URL required" });
@@ -97,10 +128,11 @@ app.post("/api/products", upload.single("image"), async (req, res) => {
 
     res.status(201).json(rows[0]);
   } catch (err) {
-    console.error("ADD ERROR:", err.message);
+    console.error("ADD PRODUCT ERROR:", err.message);
     res.status(500).json({ error: "Failed to add product" });
   }
 });
+
 /* ===============================
    UPDATE PRODUCT
 ================================ */
@@ -111,14 +143,13 @@ app.put("/api/products/:id", upload.single("image"), async (req, res) => {
 
     let finalImageUrl = imageUrl || null;
 
-    // If new file uploaded → upload to Cloudinary
     if (req.file) {
       finalImageUrl = await uploadToCloudinary(req.file.buffer);
     }
 
     const { rows } = await pool.query(
-      `UPDATE products 
-       SET title=$1, description=$2, image=$3, weight=$4, category=$5 
+      `UPDATE products
+       SET title=$1, description=$2, image=$3, weight=$4, category=$5
        WHERE id=$6 RETURNING *`,
       [title, description, finalImageUrl, weight, category, id]
     );
@@ -144,7 +175,6 @@ app.delete("/api/products/:id", async (req, res) => {
   }
 });
 
-
 /* ===============================
    GET PRODUCTS
 ================================ */
@@ -155,8 +185,30 @@ app.get("/api/products", async (req, res) => {
     );
     res.json(rows);
   } catch (err) {
-    console.error("GET ERROR:", err.message);
+    console.error("GET PRODUCTS ERROR:", err.message);
     res.status(500).json({ error: "Failed to fetch products" });
+  }
+});
+
+/* ===============================
+   PLACE ORDER + WHATSAPP
+================================ */
+app.post("/api/orders", async (req, res) => {
+  try {
+    const order = req.body;
+
+    await sendWhatsAppOrder(order);
+
+    res.json({
+      success: true,
+      message: "Order placed & WhatsApp sent",
+    });
+  } catch (err) {
+    console.error("ORDER ERROR:", err.message);
+    res.status(500).json({
+      success: false,
+      message: "Order failed",
+    });
   }
 });
 
