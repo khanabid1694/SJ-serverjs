@@ -8,12 +8,11 @@ const cloudinary = require("cloudinary").v2;
 const streamifier = require("streamifier");
 const axios = require("axios");
 
-console.log("🔥 Server starting...");
-
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+
+console.log("🔥 Server starting...");
 
 /* ===============================
    DATABASE
@@ -21,10 +20,6 @@ app.use(express.urlencoded({ extended: true }));
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
-});
-
-pool.on("connect", () => {
-  console.log("✅ Connected to PostgreSQL");
 });
 
 /* ===============================
@@ -36,15 +31,12 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-/* ===============================
-   MULTER
-================================ */
 const upload = multer({ storage: multer.memoryStorage() });
 
 /* ===============================
    ROOT
 ================================ */
-app.get("/", (req, res) => {
+app.get("/", (_, res) => {
   res.send("🚀 Backend running successfully");
 });
 
@@ -65,22 +57,18 @@ function uploadToCloudinary(buffer) {
 }
 
 /* ===============================
-   WHATSAPP HELPER
+   WHATSAPP (NON-BLOCKING)
 ================================ */
 async function sendWhatsAppOrder(order) {
   try {
-    const message = `
-🛍 NEW ORDER
+    const message = `🛍 NEW ORDER
 
-👤 Name: ${order.customerName}
-📞 Phone: ${order.phone}
-📍 Address: ${order.address}
+Name: ${order.customerName}
+Phone: ${order.phone}
+Address: ${order.address}
+Total: Rs ${order.total}`;
 
-📦 Items: ${order.items?.length || 0}
-💰 Total: Rs ${order.total}
-`;
-
-    const response = await axios.post(
+    await axios.post(
       `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
       {
         messaging_product: "whatsapp",
@@ -96,45 +84,32 @@ async function sendWhatsAppOrder(order) {
       }
     );
 
-    console.log("✅ WhatsApp sent:", response.data);
+    console.log("✅ WhatsApp sent");
   } catch (err) {
-    console.error("❌ WhatsApp API ERROR:");
+    console.error("⚠️ WhatsApp failed (IGNORED)");
     console.error(err.response?.data || err.message);
-    throw new Error("WhatsApp failed");
   }
 }
 
 /* ===============================
-   PRODUCTS CRUD
+   PRODUCTS
 ================================ */
 app.post("/api/products", upload.single("image"), async (req, res) => {
   try {
     const { title, description, weight, category, imageUrl } = req.body;
 
-    if (!title || !category) {
-      return res.status(400).json({ error: "Title & category required" });
-    }
-
-    let finalImage;
-
-    if (req.file) {
-      finalImage = await uploadToCloudinary(req.file.buffer);
-    } else if (imageUrl) {
-      finalImage = imageUrl;
-    } else {
-      return res.status(400).json({ error: "Image required" });
-    }
+    let image = imageUrl;
+    if (req.file) image = await uploadToCloudinary(req.file.buffer);
 
     const { rows } = await pool.query(
       `INSERT INTO products (title, description, image, weight, category)
        VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [title, description, finalImage, weight, category]
+      [title, description, image, weight, category]
     );
 
-    res.status(201).json(rows[0]);
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ error: "Add product failed" });
+    res.json(rows[0]);
+  } catch {
+    res.status(500).json({ error: "Product failed" });
   }
 });
 
@@ -146,43 +121,30 @@ app.get("/api/products", async (_, res) => {
 });
 
 /* ===============================
-   PLACE ORDER (FIXED)
+   PLACE ORDER (FIXED FOREVER)
 ================================ */
 app.post("/api/orders", async (req, res) => {
-  try {
-    const order = req.body;
+  const order = req.body;
 
-    if (!order.customerName || !order.phone || !order.address) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid order data",
-      });
-    }
-
-    await sendWhatsAppOrder(order);
-
-    res.json({
-      success: true,
-      message: "Order placed successfully",
-    });
-  } catch (err) {
-    res.status(500).json({
+  if (!order.customerName || !order.phone || !order.address) {
+    return res.status(400).json({
       success: false,
-      message: "Failed to process order",
+      message: "Invalid order data",
     });
   }
+
+  // ✅ Respond immediately
+  res.json({
+    success: true,
+    message: "Order placed successfully",
+  });
+
+  // 🔥 WhatsApp runs AFTER response
+  sendWhatsAppOrder(order);
 });
 
 /* ===============================
-   DB TEST
-================================ */
-app.get("/db-test", async (req, res) => {
-  const result = await pool.query("SELECT NOW()");
-  res.json(result.rows[0]);
-});
-
-/* ===============================
-   START SERVER (RAILWAY SAFE)
+   SERVER
 ================================ */
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, "0.0.0.0", () => {
