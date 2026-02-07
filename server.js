@@ -60,39 +60,40 @@ function uploadToCloudinary(buffer) {
    WHATSAPP HELPER (NON-BLOCKING)
 ================================ */
 async function sendWhatsAppOrder(order) {
+  const message = `🛍 *NEW ORDER*
+
+👤 Name: ${order.customerName}
+📞 Phone: ${order.phone}
+📍 Address: ${order.address}
+
+📦 Items: ${order.items.length}
+💰 Total: Rs ${order.totalAmount}
+
+SJ Jewellers`;
+
+  const url = `https://graph.facebook.com/v19.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
+
   try {
-    if (!order.customerName || !order.phone || !order.address || !order.total) {
-      console.warn("⚠️ WhatsApp skipped: incomplete order data");
-      return;
-    }
+    const response = await axios.post(
+      url,
+      {
+        messaging_product: "whatsapp",
+        to: process.env.ADMIN_WHATSAPP_NUMBER, // Must include country code
+        type: "text",
+        text: { body: message }
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
 
-    const message = 
-`🛍 NEW ORDER
-Name: ${order.customerName}
-Phone: ${order.phone}
-Address: ${order.address}
-Total: Rs ${order.total}`;
-
-    const url = `https://graph.facebook.com/v18.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
-
-    const payload = {
-      messaging_product: "whatsapp",
-      to: process.env.ADMIN_WHATSAPP_NUMBER,
-      type: "text",
-      text: { body: message },
-    };
-
-    const headers = {
-      Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
-      "Content-Type": "application/json",
-    };
-
-    const response = await axios.post(url, payload, { headers });
-
-    console.log("✅ WhatsApp sent:", response.data);
-  } catch (err) {
-    console.error("⚠️ WhatsApp failed (IGNORED)");
-    console.error(err.response?.data || err.message);
+    console.log("WhatsApp Sent:", response.data);
+  } catch (error) {
+    console.error("WhatsApp ERROR:", error.response?.data || error.message);
+    throw error;
   }
 }
 
@@ -182,3 +183,4 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ Server running on port ${PORT}`);
 });
+
