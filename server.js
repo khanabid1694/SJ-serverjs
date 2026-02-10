@@ -134,6 +134,48 @@ app.post("/api/products", upload.single("image"), async (req, res) => {
     res.status(500).json({ error: "Upload failed", details: err.message });
   }
 });
+/* ===============================
+   UPDATE PRODUCT
+================================ */
+app.put("/api/products/:id", upload.single("image"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, weight, category, imageUrl } = req.body;
+
+    let finalImageUrl = imageUrl || null;
+
+    // If new file uploaded → upload to Cloudinary
+    if (req.file) {
+      finalImageUrl = await uploadToCloudinary(req.file.buffer);
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE products 
+       SET title=$1, description=$2, image=$3, weight=$4, category=$5 
+       WHERE id=$6 RETURNING *`,
+      [title, description, finalImageUrl, weight, category, id]
+    );
+
+    res.json(rows[0]);
+  } catch (err) {
+    console.error("UPDATE ERROR:", err.message);
+    res.status(500).json({ error: "Failed to update product" });
+  }
+});
+
+/* ===============================
+   DELETE PRODUCT
+================================ */
+app.delete("/api/products/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query("DELETE FROM products WHERE id=$1", [id]);
+    res.json({ message: "Product deleted" });
+  } catch (err) {
+    console.error("DELETE ERROR:", err.message);
+    res.status(500).json({ error: "Failed to delete product" });
+  }
+});
 
 /* ===============================
    ORDERS + WHATSAPP
@@ -173,3 +215,4 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ Server running on port ${PORT}`);
 });
+
